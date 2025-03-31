@@ -1,0 +1,281 @@
+- hosts: all
+  become: yes
+  vars:
+    conda_installer: "Miniconda3-latest-Linux-x86_64.sh"
+    python_version: "3.12"
+    conda_env_name: "ml"
+  tasks:
+    - name: Set Korean locale system-wide using blockinfile
+      blockinfile:
+        path: /etc/locale.conf
+        create: yes
+        block: |
+          LANG=ko_KR.UTF-8
+          LC_ALL=ko_KR.UTF-8
+
+    - name: Resize root disk to full size (Oracle Linux with LVM)
+      become: true
+      block:
+        - name: Install growpart utility
+          package:
+            name: cloud-utils-growpart
+            state: present
+
+        - name: Grow partition /dev/sda3
+          become: true
+          shell: growpart /dev/sda 3
+          register: growpart_result
+          changed_when: "'CHANGED' in growpart_result.stdout"
+          failed_when: false
+
+
+        - name: Resize physical volume
+          shell: pvresize /dev/sda3
+          register: pvresize_result
+          changed_when: "'resized' in pvresize_result.stdout"
+
+        - name: Extend root logical volume
+          become: true
+          shell: lvextend -l +100%FREE /dev/ocivolume/root
+          register: lvextend_result
+          changed_when: "'successfully resized' in lvextend_result.stdout"
+          failed_when: >
+            lvextend_result.rc != 0 and
+            'matches existing size' not in lvextend_result.stderr | join('')
+
+        - name: Expand XFS filesystem
+          shell: xfs_growfs /
+
+
+    - name: Install base packages (Oracle Linux 8)
+      dnf:
+        name:
+          - wget
+          - curl
+          - git
+          - gcc
+          - gcc-c++
+          - make
+          - unzip
+          - tar
+          - python3-pip
+        state: present
+        update_cache: yes
+
+    - name: Download and install Miniconda
+      get_url:
+        url: "https://repo.anaconda.com/miniconda/{{ conda_installer }}"
+        dest: "/tmp/{{ conda_installer }}"
+        mode: '0755'
+
+    - name: Install Miniconda
+      shell: bash /tmp/{{ conda_installer }} -b -p /opt/miniconda
+      args:
+        creates: /opt/miniconda/bin/conda
+
+
+    - name: Add conda to PATH for all users
+      lineinfile:
+        path: /etc/profile.d/conda.sh
+        line: 'export PATH="/opt/miniconda/bin:$PATH"'
+        create: yes
+
+    - name: Create conda environment with Python 3.12
+      shell: "/opt/miniconda/bin/conda create -y -n {{ conda_env_name }} python={{ python_version }}"
+      args:
+        creates: "/opt/miniconda/envs/{{ conda_env_name }}"
+
+    - name: Install NVIDIA driver 550
+      shell: |
+        dnf config-manager --add-repo=https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo
+        dnf clean all
+        dnf -y module install nvidia-driver:latest-dkms
+        dnf -y install nvidia-driver-latest-dkms
+        modprobe nvidia
+      ignore_errors: yes
+
+    - name: Install CUDA 12.2 Toolkit
+      shell: |
+        cd /tmp
+        wget https://developer.download.nvidia.com/compute/cuda/12.2.0/local_installers/cuda_12.2.0_535.86.10_linux.run
+        chmod +x cuda_12.2.0_535.86.10_linux.run
+        ./cuda_12.2.0_535.86.10_linux.run --silent --toolkit
+      args:
+        creates: "/usr/local/cuda"
+
+    - name: Install Python AI/ML libraries
+      shell: |
+        source /opt/miniconda/bin/activate {{ conda_env_name }} && \
+        pip install torch==2.6.0 tensorflow==2.18.0 \
+                    numpy pandas scikit-learn matplotlib jupyterlab
+
+    - name: Ensure JupyterLab is installed in 'ml' Conda environment
+      become: true
+      shell: |
+        source /opt/miniconda/bin/activate ml && \
+        pip show jupyterlab || pip install jupyterlab ipywidgets notebook
+      args:
+        executable: /bin/bash
+      register: jupyter_install_result
+      changed_when: "'Successfully installed' in jupyter_install_result.stdout"
+
+    - name: Start JupyterLab in background using conda `ml` environment
+      shell: |
+        source /opt/miniconda/bin/activate ml && \
+        nohup jupyter lab --ip=0.0.0.0 --port=8888 --no-browser > /home/opc/jupyterlab.log 2>&1 &
+      args:
+        executable: /bin/bash
+      become: true
+      become_user: opc
+
+    - name: Open ports 22 and 8888 in firewalld
+      become: true
+      block:
+        - name: Ensure firewalld is installed and running
+          service:
+            name: firewalld
+            state: started
+            enabled: true
+
+        - name: Open port 22/tcp permanently
+          firewalld:
+            port: 22/tcp
+            permanent: true
+            state: enabled
+            immediate: yes
+
+        - name: Open port 8888/tcp permanently
+          firewalld:
+            port: 8888/tcp
+            permanent: true
+            state: enabled
+            immediate: yes
+        
+        - name: Open port 9100/tcp permanently
+          firewalld:
+            port: 9100/tcp
+            permanent: true
+            state: enabled
+            immediate: yes
+
+        - name: Reload firewalld to apply changes
+          command: firewall-cmd --reload
+
+
+    - name: (Optional) Install Scouter Agent or monitoring tools
+      shell: echo "Monitoring agent installation script goes here"
+
+- name: Install Node Exporter
+  hosts: all
+  become: true
+  tasks:
+    - name: Create user
+      user:
+        name: node_exporter
+        shell: /usr/sbin/nologin
+
+    - name: Download Node Exporter tarball
+      get_url:
+        url: https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
+        dest: /tmp/node_exporter.tar.gz
+        mode: 0644
+
+    - name: Extract Node Exporter tarball
+      unarchive:
+        src: /tmp/node_exporter.tar.gz
+        dest: /opt/
+        remote_src: yes
+        extra_opts: [--strip-components=1]
+      register: extract_node_exporter
+
+    - name: Move binary to /usr/local/bin
+      command: mv /opt/node_exporter /usr/local/bin/node_exporter
+      args:
+        creates: /usr/local/bin/node_exporter
+
+    - name: Create systemd service
+      copy:
+        dest: /etc/systemd/system/node_exporter.service
+        content: |
+          [Unit]
+          Description=Node Exporter
+          After=network.target
+
+          [Service]
+          User=node_exporter
+          ExecStart=/usr/local/bin/node_exporter
+
+          [Install]
+          WantedBy=default.target
+
+    - name: Start Node Exporter
+      systemd:
+        name: node_exporter
+        enabled: true
+        state: started
+
+    - name: Open port 9100
+      firewalld:
+        port: 9100/tcp
+        permanent: true
+        state: enabled
+        immediate: yes
+
+- name: Update Prometheus configuration
+  hosts: localhost
+  become: true
+  tasks:
+    - name: Ensure /etc/prometheus directory exists
+      file:
+        path: /etc/prometheus
+        state: directory
+        owner: prometheus
+        group: prometheus
+        mode: 0755
+
+    - name: Deploy prometheus.yml with GPU VM targets
+      template:
+        src: prometheus.yml.j2
+        dest: /etc/prometheus/prometheus.yml
+        owner: prometheus
+        group: prometheus
+        mode: 0644
+
+    - name: Restart Prometheus to apply new config
+      systemd:
+        name: prometheus
+        state: restarted
+
+
+- name: Extract Jupyter token from GPU VMs
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Extract Jupyter token from log
+      become: true
+      become_user: opc
+      shell: grep -oP 'token=\K[^&]+' /home/opc/jupyterlab.log | head -n 1
+      register: jupyter_token
+      failed_when: false
+
+    - name: Save token to host variable
+      set_fact:
+        jupyter_token_collected: "{{ jupyter_token.stdout }}"
+
+- name: Save all tokens to CSV
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Write CSV header
+      copy:
+        dest: ./jupyter_tokens.csv
+        content: "IP,TOKEN\n"
+
+    - name: Append each host's token to CSV
+      lineinfile:
+        path: ./jupyter_tokens.csv
+        line: "{{ hostvars[item].ansible_host | default(item) }},{{ hostvars[item].jupyter_token_collected }}"
+        insertafter: EOF
+      loop: "{{ groups['all'] }}"
+      when: hostvars[item].jupyter_token_collected is defined
+

@@ -1,0 +1,6 @@
+compartment_id       = "ocid1.compartment.oc1..aaaaaaaam3amapwxz6nyciqzb2v2iwg66t22g47vabo5ilnghbsskooeop3q"
+availability_domain  = "fttO:US-ASHBURN-AD-1"             # e.g., "kORE:AP-SEOUL-1-AD-1"
+#subnet_id            = "ocid1.subnet.oc1.ap-seoul-1.aaaaaaaavl3k6yzvi7ufsdyv2kxceyonjsdj7g6kuxikbnvbc5j43tzlwaoa"
+subnet_id            = "ocid1.subnet.oc1.iad.aaaaaaaao5airz3vuohgxzme5lek3yz3dbtsz5ngcojwn4rbokyqnosuogsa"
+image_id             = "ocid1.image.oc1.iad.aaaaaaaaj3uhqliqpetwozwm5hbfuqw4ubrhkg7pnez2lwwrlbibqe4o72ga"
+#image_id             = "ocid1.image.oc1.iad.aaaaaaaaj3uhqliqpetwozwm5hbfuqw4ubrhkg7pnez2lwwrlbibqe4o72ga"
