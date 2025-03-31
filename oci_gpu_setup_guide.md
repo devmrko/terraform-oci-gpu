@@ -86,7 +86,7 @@ terraform init
 terraform apply
 ```
 
-3. 인벤토리 생성
+3. 인벤토리 내역으로(VM이름, public IP, private key path) CSV로 생성
 ```bash
 python generate_csv_and_inventory.py
 ```
@@ -97,7 +97,7 @@ python generate_csv_and_inventory.py
 ./change_user.sh  # ubuntu → opc
 ```
 
-2. Ansible 실행
+2. Ansible 실행(ANSIBLE_HOST_KEY_CHECKING 제외 하도록)
 ```bash
 ./run-ansible.sh
 ```
@@ -213,7 +213,7 @@ scrape_configs:
 - Prometheus: `http://<컨트롤VM-IP>:9090/targets`
 
 ### 생성된 정보 확인
-- VM 정보: `inventory.csv` (VM 이름, Public IP, SSH 키)
+- VM 정보: `gpu_vm_list.csv` (VM 이름, Public IP, SSH 키)
 - Jupyter 토큰: `ansible/jupyter_token.csv`
 
 ### Grafana 설정
