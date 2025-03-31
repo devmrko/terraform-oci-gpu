@@ -68,6 +68,7 @@ sudo dnf install -y ansible
    - compartment_id
    - subnet_id
    - image_id (GPU 이미지)
+   - instance_count (생성할 GPU VM 수)
 
 2. GPU 이미지 OCID 확인
 ```bash
@@ -247,6 +248,7 @@ compartment_id = "ocid1.compartment.oc1..."
 subnet_id = "ocid1.subnet.oc1..."
 image_id = "ocid1.image.oc1..."
 shape = "VM.GPU.A10.1"
+instance_count = 1  # 원하는 GPU VM 인스턴스 수 지정
 ```
 
 #### ansible/playbook.yml 주요 태스크
