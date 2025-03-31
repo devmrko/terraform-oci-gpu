@@ -103,6 +103,24 @@ python generate_csv_and_inventory.py
 ./run-ansible.sh
 ```
 
+### 스토리지 설정
+Ansible playbook은 LVM을 사용하여 자동으로 스토리지를 최적화합니다:
+
+1. 루트 디스크 확장 (Oracle Linux with LVM)
+   - cloud-utils-growpart 유틸리티 설치
+   - growpart를 사용하여 /dev/sda3 파티션 확장
+   - pvresize로 물리 볼륨 크기 조정
+   - /dev/ocivolume/root 논리 볼륨을 사용 가능한 모든 공간으로 확장
+   - xfs_growfs로 XFS 파일시스템 확장
+
+이 프로세스는:
+- 파티션을 사용 가능한 최대 크기로 자동 확장
+- LVM 구성 자동 조정
+- 새로운 크기에 맞게 파일시스템 확장
+- 시스템 안정성을 유지하기 위한 오류 처리 포함
+
+이 스토리지 설정은 terraform.tfvars에서 지정한 볼륨 크기를 최대한 활용할 수 있도록 보장합니다.
+
 ### 설치되는 구성요소
 - 기본 패키지 (dnf)
 - Miniconda
